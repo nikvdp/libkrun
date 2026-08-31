@@ -549,6 +549,14 @@ fn choose_payload(vm_resources: &VmResources) -> Result<Payload, StartMicrovmErr
     }
 }
 
+#[cfg(target_arch = "x86_64")]
+fn irq_max(split_irqchip: bool) -> u32 {
+    if split_irqchip {
+        arch::IRQ_MAX_SPLIT
+    } else {
+        arch::IRQ_MAX
+    }
+}
 /// Builds and starts a microVM based on the current Firecracker VmResources configuration.
 ///
 /// This is the default build recipe, one could build other microVM flavors by using the
@@ -784,10 +792,14 @@ pub fn build_microvm(
     // Instantiate the MMIO device manager.
     // 'mmio_base' address has to be an address which is protected by the kernel
     // and is architectural specific.
+    #[cfg(target_arch = "x86_64")]
+    let irq_max = irq_max(vm_resources.split_irqchip);
+    #[cfg(not(target_arch = "x86_64"))]
+    let irq_max = arch::IRQ_MAX;
     #[allow(unused_mut)]
     let mut mmio_device_manager = MMIODeviceManager::new(
         &mut (arch::MMIO_MEM_START.clone()),
-        (arch::IRQ_BASE, arch::IRQ_MAX),
+        (arch::IRQ_BASE, irq_max),
     );
 
     #[cfg(target_os = "macos")]
@@ -2337,6 +2349,13 @@ fn attach_snd_device(vmm: &mut Vmm, intc: IrqChip) -> std::result::Result<(), St
 #[cfg(test)]
 pub mod tests {
     use super::*;
+
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn split_irqchip_selects_full_ioapic_range() {
+        assert_eq!(irq_max(false), arch::IRQ_MAX);
+        assert_eq!(irq_max(true), arch::IRQ_MAX_SPLIT);
+    }
     use crate::vmm_config::kernel_bundle::KernelBundle;
 
     #[allow(unused)]
